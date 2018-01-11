@@ -164,6 +164,7 @@ class Network:
 		self.epsilon = epsilon
 		self.lmda   = lmda
 		self.verbose=False
+		self.epoc_print=200
 		
 	def __repr__(self):
 		for l in self.layers :
@@ -201,28 +202,36 @@ class Network:
 		for l in self.layers :
 			data = l.update_weight(data, self.epsilon)		
 
-	def train_batch(self, n, input_data, input_labels, batch_size=0) :
+	def train_batch(self, no_epocs, input_data, input_labels, batch_size=0) :
 		if batch_size==0 or batch_size>len(input_data) :
-			batch_size=len(input_data)		
+			batch_size=len(input_data)	
+   
+		noi =input_data.shape[1]
 
 		if len(input_labels.shape)==1 :
-			input_labels.shape = (input_labels.shape[0],1)
+			nol =1
+		else:
+			nol = input_labels.shape[1]
 
-		for j in range(0,n) :
-			error = np.zeros((1,input_labels.shape[1]))
-			for n in range(0,len(input_data)//batch_size) :
-				idx = n*batch_size
+		for j in range(0,no_epocs) :
+			error = np.zeros((1,nol))
+			for bn in range(0,len(input_data)//batch_size) :
+				idx = bn*batch_size
 	    			for i in range(0,batch_size) :
-	    				data   = input_data  [idx+i]
-	    				labels = input_labels[idx+i]
+	    				data   = input_data  [idx+i] 
+	    				labels = input_labels[idx+i] 
+
+					data.shape = (1,noi)
+					#labels.shape = (1,nol)
 	    
-	    				print(j,i, data.shape, labels.shape)
 	    				pred = self.forward(data)
 	    				error += (labels - pred)
     
-    				self.backprop(error, data) #backprop at end of each batch
+    				#if self.verbose : print "batch {} - sum error {}".format(idx, error)
 
-			if j%10000==0 :
+				self.backprop(error, data) #backprop at end of each batch
+
+			if j%self.epoc_print == 0 :
 				mse = self.loss_absolute_error(error,batch_size)
 				if self.verbose : print "epoc: {}  MSE {}".format( j,mse)
 
@@ -236,7 +245,7 @@ class Network:
 			error = (input_labels - pred)
 			self.backprop(error, input_data)
 
-			if j%10000==0 :
+			if j%self.epoc_print==0 :
 				mse = self.loss_absolute_error(error,len(input_data))
 				if self.verbose : print "epoc: {}  MSE {}".format( j,mse)
 				#print (bn, data,labels)
