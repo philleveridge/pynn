@@ -37,6 +37,28 @@ class Activation:
 	      return 1*(x>0)     
 	  return np.maximum(x,0,x)
 
+class CostFunctions:
+	@staticmethod
+	def sum_squared_error( outputs, targets, deriv=False ):
+	    if deriv == True:
+		return outputs - targets 
+	    else:
+		return 0.5 * np.mean(np.sum( np.power(outputs - targets,2), axis = 1 ))
+
+
+	@staticmethod
+	def binary_cross_entropy_cost( outputs, targets, deriv=False, epsilon=1e-11 ):
+	    """
+	    The output signals should be in the range [0, 1]
+	    """
+	    # Prevent overflow
+	    outputs = np.clip(outputs, epsilon, 1 - epsilon)
+	    divisor = np.maximum(outputs * (1 - outputs), epsilon)
+	    
+	    if deriv == True :
+		return (outputs - targets) / divisor
+	    else:
+		return np.mean(-np.sum(targets * np.log( outputs ) + (1 - targets) * np.log(1 - outputs), axis=1))
 
 
 class Layer:
@@ -165,6 +187,7 @@ class Network:
 		self.lmda   = lmda
 		self.verbose=False
 		self.epoc_print=200
+		self.cost_fn = CostFunctions.sum_squared_error
 		
 	def __repr__(self):
 		for l in self.layers :
@@ -225,15 +248,13 @@ class Network:
 					#labels.shape = (1,nol)
 	    
 	    				pred = self.forward(data)
-	    				error += (labels - pred)
-    
-    				#if self.verbose : print "batch {} - sum error {}".format(idx, error)
+	    				error += self.cost_fn(labels, pred, deriv=True)
 
-				self.backprop(error, data) #backprop at end of each batch
+				self.backprop(error, data)
 
-			if j%self.epoc_print == 0 :
-				mse = self.loss_absolute_error(error,batch_size)
-				if self.verbose : print "epoc: {}  MSE {}".format( j,mse)
+			if self.verbose and j%self.epoc_print == 0 :
+				cost = self.cost_fn(input_labels, pred)
+				print "epoc: {}  loss {}".format(j, cost)
 
 
 	def train(self, n, input_data, input_labels) :
@@ -242,13 +263,13 @@ class Network:
 
 		for j in range(0,n) :
 			pred = self.forward(input_data)
-			error = (input_labels - pred)
+			error = self.cost_fn(input_labels, pred, deriv=True)
 			self.backprop(error, input_data)
 
-			if j%self.epoc_print==0 :
-				mse = self.loss_absolute_error(error,len(input_data))
-				if self.verbose : print "epoc: {}  MSE {}".format( j,mse)
-				#print (bn, data,labels)
+			if self.verbose and j%self.epoc_print==0 :
+				cost = self.cost_fn(input_labels, pred)
+				print "epoc: {}  loss {}".format(j, cost)
+
 
 			
 if __name__ == "__main__" :
