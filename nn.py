@@ -47,9 +47,9 @@ class CostFunctions:
 
 
 	@staticmethod
-	def binary_cross_entropy_cost( outputs, targets, deriv=False, epsilon=1e-11 ):
+	def binary_cross_entropy_cost( outputs, targets, deriv=False, epsilon=0.0001):
 	    """
-	    The output signals should be in the range [0, 1]
+	    The output should be in the range [0, 1]
 	    """
 	    # Prevent overflow
 	    outputs = np.clip(outputs, epsilon, 1 - epsilon)
@@ -63,8 +63,11 @@ class CostFunctions:
 
 class Layer:
 	#initialise
-	def __init__(self, num_inputs, num_outputs, layer_name, afn=Activation.sigmoid) :
-		self.syn  = 2*np.random.random((num_inputs,num_outputs)) - 1
+	def __init__(self, num_inputs, num_outputs, layer_name, afn=Activation.sigmoid, iwfn=None) :
+		if iwfn==None :
+			self.syn = 2*np.random.random((num_inputs,num_outputs)) - 1
+		else:
+			self.syn = iwfn(num_inputs,num_outputs)                
     		self.bias = np.zeros((1,num_outputs))
 		self.name = layer_name	
 		self.afn = afn
@@ -77,8 +80,9 @@ class Layer:
                  print  "D{} {}".format(self.name, self.delta)
 
 	def forward(self, input) :
-		self.output = self.afn(np.dot(input,self.syn)+self.bias)
-		return self.output
+         op=self.afn(np.dot(input,self.syn)+self.bias)
+         self.output = op
+         return self.output
 
 	def gradient(self, error) :
 		self.delta = error * self.afn(self.output, deriv=True)
@@ -205,15 +209,6 @@ class Network:
 		error = y - output[0]
 		return "%d (% .3f)   Error: %.3f" % (normalized, output[0], error)
 
-	def Loss_mean_squared_error(self, err, N) :
-		# Calculating the loss
-		loss = np.sum(err) ** 2
-		return 1./N * loss
-
-	def loss_absolute_error(self, err, N) :
-		# Calculating the loss
-		return np.sum(abs(err)) / N
-
 	def predict(self, x):
 		probs = self.forward(x)
 		return np.argmax(probs, axis=1)
@@ -237,24 +232,21 @@ class Network:
 			nol = input_labels.shape[1]
 
 		for j in range(0,no_epocs) :
-			error = np.zeros((1,nol))
 			for bn in range(0,len(input_data)//batch_size) :
 				idx = bn*batch_size
-	    			for i in range(0,batch_size) :
-	    				data   = input_data  [idx+i] 
-	    				labels = input_labels[idx+i] 
 
-					data.shape = (1,noi)
-					#labels.shape = (1,nol)
+				data   = input_data  [idx:idx+batch_size] 
+				labels = input_labels[idx:idx+batch_size] 
+				#data.shape = (batch_size,noi)
+				labels.shape = (batch_size,nol)
 	    
-	    				pred = self.forward(data)
-	    				error += self.cost_fn(labels, pred, deriv=True)
-
-				self.backprop(error, data)
+				pred = self.forward(data)
+				error = self.cost_fn(labels, pred, deriv=True)
+				self.backprop(error, data)				
 
 			if self.verbose and j%self.epoc_print == 0 :
-				cost = self.cost_fn(input_labels, pred)
-				print "epoc: {}  loss {}".format(j, cost)
+				cost = self.cost_fn(labels, pred)
+				print "epoc: {}  : loss {}".format(j, cost)
 
 
 	def train(self, n, input_data, input_labels) :
