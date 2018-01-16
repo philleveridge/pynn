@@ -126,17 +126,23 @@ class CNN(Layer):
 	def __init__(self, num_filters, filter_size, layer_name, afn=None) :
 		self.name = layer_name
 		self.afn  = afn
-		self.convolve = True
-		self.output=0
+		self.output=0  #
+		self.input=0   #X value
+		self.verbose=True
 		self.filters = []
 		for i in range(num_filters) :
-			self.filters.append(2*np.random.random((filter_size,filter_size)) - 1)
+			filter= 2*np.random.random((filter_size,filter_size)) - 1
+			self.filters.append(filter)
 		
 
 	def __repr__(self) :
 		return self.name
+
+
     
-	def maxpool(self, data, cz, szx, szy) :
+	def maxpool(self, cz, szx, szy) :
+		data = self.input
+
 		w=data.shape[1]
 		h=data.shape[0]
 		dout = np.zeros([h//szx,w//szy])   
@@ -151,32 +157,146 @@ class CNN(Layer):
 		self.output = dout
 		return dout
 
-	def conv(self, data, filter, szx, szy) :
-		w=data.shape[1]
-		h=data.shape[0]
-		cz=filter.shape[0]
-		dout = np.zeros(data.shape)   
-		print("conv",w,h,cz,szx,szy)        
-		try:
-			for i in range(0,w-cz+1) :
-			    for j in range(0,h-cz+1) :
-				#print(i,j,i*szy,j*szx)
-				dout[j*szx:j*szx+cz,i*szy:i*szy+cz] +=data[j*szx:j*szx+cz,i*szy:i*szy+cz]*filter
-				#print(i,j,dout)
-		except:
-			print("err",i,j)
-		self.output = dout
-		return dout
+	# That very smart code was taken from http://stackoverflow.com/questions/30109068/implement-matlabs-im2col-sliding-in-python/30110497
+	@staticmethod
+	def im2col(array, size, stride=1, padding=0):
+		# Add padding to our array
+		#padded_array = np.pad(array,((0, 0), (0, 0), (padding, padding), (padding, padding)),	mode='constant')
+		# Get the shape of our newly made array
+		#H,W = np.shape(padded_array)
+		H,W = np.shape(array)
+		# Get the extent
+		extent = H - size + 1
+
+		# Start index
+		start_idx = np.arange(size)[:, None] * H + np.arange(size)
+		offset_idx = np.arange(extent)[:, None] * H + np.arange(extent)
+
+		return np.take(
+		array, 
+		np.ravel(start_idx)[:, None] + np.ravel(offset_idx)[::stride]
+		)
+
+	def cifar_rgb_to_grayscale(image):
+		red = np.reshape(image[0:1024], (32, 32))
+		green = np.reshape(image[1024:2048], (32, 32))
+		blue = np.reshape(image[2048:3072], (32, 32))
+
+		return 0.2989 * red + 0.5870 * green + 0.1140 * blue
+
+		
+	def max_pool2(self, inputs, size, stride=1, padding=0):
+		"""
+		    Description: Max pool layer
+		    Parameters:
+			inputs -> The input of size [batch_size] x [filter] x [shape_x] x [shape_y]
+			size -> The size of the tiling
+			stride -> The applied translation at each step
+			padding -> The padding (padding with 0 so the last column isn't left out)
+		"""
+
+		inp_sp = np.shape(inputs)
+		# We reshape it so every filter is considered an image.
+		tile_col = self.im2col(inputs, size, stride=stride, padding=padding)
+		# We take the max of each column
+		max_ids = np.argmax(tile_col, axis=0)
+		# We get the resulting 1 x 10240 vector
+		result = tile_col[max_ids, range(max_ids.size)]
+
+
+
+		new_size = (inp_sp[0] - size + 2 * padding) / stride + 1
+		
+		if (self.verbose) : print "res=",result, result.shape, new_size
+
+		result = np.reshape(result, (new_size, new_size))
+
+
+
+		# Make it from 16 x 16 x 10 to 10 x 16 x 16
+		#return np.transpose(result, (2, 0, 1))
+		return result
+
+	def avg_pool2(self, inputs, size, stride, padding):
+		"""
+		    (Copy & paste of the max pool code with np.mean instead of np.argmax)
+		    Description: Average pool layer
+		    Parameters:
+			inputs -> The input of size [batch_size] x [filter] x [shape_x] x [shape_y]
+			size -> The size of the tiling
+			stride -> The applied translation at each step
+			padding -> The padding (padding with 0 so the last column isn't left out)
+		"""
+
+		inp_sp = np.shape(inputs)
+		tile_col = self.im2col(reshaped, size, stride=stride, padding=padding)
+		max_ids = np.mean(tile_col, axis=0)
+		result = tile_col[max_ids, range(max_ids.size)]
+		new_size = (inp_sp[2] - size + 2 * padding) / stride + 1
+		result = np.reshape(result, (new_size, new_size, inp_sp[0]))
+		return np.transpose(result, (2, 0, 1))
+
+	def convolve(self, inputs, filter, stride=1, padding=0):
+		"""
+		    Description: Convolution layer
+		"""
+
+		kernel_size = filter.shape[0]
+		new_size = (np.shape(inputs)[1] - kernel_size + 2 * padding) / stride + 1
+		tile_col = self.im2col(inputs, kernel_size, stride, padding)
+		kernel_col = np.reshape(filter, -1)
+		result = np.dot(kernel_col, tile_col)
+		return np.reshape(result, (new_size, new_size))
+
+	def conv_backward(self, dH):
+		'''
+		The backward computation for a convolution function
+
+		Arguments:
+		dH -- gradient of the cost with respect to output of the conv layer (H), numpy array of shape (n_H, n_W) assuming channels = 1
+
+		Returns:
+		dX -- gradient of the cost with respect to input of the conv layer (X), numpy array of shape (n_H_prev, n_W_prev) assuming channels = 1
+		dW -- gradient of the cost with respect to the weights of the conv layer (W), numpy array of shape (f,f) assuming single filter
+		'''
+
+		# Retrieving information from the "cache"
+		(X, W) = self.cache
+
+		# Retrieving dimensions from X's shape
+		(n_H_prev, n_W_prev) = X.shape
+
+		# Retrieving dimensions from W's shape
+		(f, f) = W.shape
+
+		# Retrieving dimensions from dH's shape
+		(n_H, n_W) = dH.shape
+
+		# Initializing dX, dW with the correct shapes
+		dX = np.zeros(X.shape)
+		dW = np.zeros(W.shape)
+
+		# Looping over vertical(h) and horizontal(w) axis of the output
+		for h in range(n_H):
+			for w in range(n_W):
+				dX[h:h+f, w:w+f] += W * dZ(h,w)
+				dW += X[h:h+f, w:w+f] * dZ(h,w)
+
+		return dX, dW
 
 	def forward(self, x) :
-        	"""forward pass using x as input"""
-		for f in filters:
-			pass
-		self.output = x
+		"""forward pass using x as input"""
+		self.input = x
+		output=list()
+		for f in self.filters:
+			r = self.convolve(x, f)
+			print(r)
+			output.append(r)
+		return output
  
 	def gradient(self, error) :
         	"""calculate gradient using error"""
-		self.delta =0
+		error = self.conv_backward(error)
 		return error
 
 	def update_weight(self, input, learning_rate) :

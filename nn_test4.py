@@ -31,9 +31,17 @@ n=Network([	CNN(2,3, "image"),   #2 feature 3x3
 n.verbose=True
 n.layers[0].filters[0] = filter             
 n.layers[0].filters[1] = filter1
+
+n.layers[0].input = data
      
-print ("out=",n.layers[0].maxpool(data,4,2,2))
-print ("out=",n.layers[0].conv(data,filter,1,1) )
+print ("out=",n.layers[0].maxpool(4,2,2))
+
+print ("out=",n.layers[0].max_pool2(data,3))
+#print ("out=",n.layers[0].max_pool2(data,4,stride=2,padding=0))
+
+#print ("out=",n.layers[0].convolve(data,filter1) )
+
+print ("fwd=", n.layers[0].forward(data))
 
 #o = n.train(5000,data, y? )
 
